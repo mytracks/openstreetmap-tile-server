@@ -44,10 +44,13 @@ RUN apt-get install -y --no-install-recommends \
   libexpat1-dev \
   libfreetype6-dev \
   libgdal-dev \
+  libgd-perl \
   libgeos++-dev \
   libgeos-dev \
   libgeotiff-epsg \
   libicu-dev \
+  libipc-sharelite-perl \
+  libjson-perl \
   liblua5.3-dev \
   libmapnik-dev \
   libpq-dev \
@@ -113,6 +116,7 @@ RUN mkdir -p /home/renderer/src \
  && cd /home/renderer/src \
  && git clone -b switch2osm https://github.com/SomeoneElseOSM/mod_tile.git \
  && cd mod_tile \
+ && sed -i 's/#define MAX_ZOOM.*/#define MAX_ZOOM 22/g' includes/render_config.h \
  && ./autogen.sh \
  && ./configure \
  && make -j $(nproc) \
@@ -134,15 +138,26 @@ RUN mkdir -p /home/renderer/src \
  && rm /home/renderer/src/openstreetmap-carto/data/*.zip
 
 # Configure renderd
-RUN sed -i 's/renderaccount/renderer/g' /usr/local/etc/renderd.conf \
- && sed -i 's/\/truetype//g' /usr/local/etc/renderd.conf \
- && sed -i 's/hot/tile/g' /usr/local/etc/renderd.conf
+# RUN sed -i 's/renderaccount/renderer/g' /usr/local/etc/renderd.conf \
+#  && sed -i 's/\/truetype//g' /usr/local/etc/renderd.conf \
+#  && sed -i 's/hot/tile/g' /usr/local/etc/renderd.conf
+
+ # Install Tirex
+ RUN  mkdir -p /home/renderer/src \
+ && cd /home/renderer/src \
+ && git clone https://github.com/openstreetmap/tirex.git \
+ && cd tirex \
+ && git checkout ec73c36a5c4d2a6ffe2ae9118d8d9d9dad3a786c \
+ && rm -rf .git \
+ && make install
 
 # Configure Apache
 RUN mkdir /var/lib/mod_tile \
  && chown renderer /var/lib/mod_tile \
- && mkdir /var/run/renderd \
- && chown renderer /var/run/renderd \
+ && mkdir /var/run/tirex \
+ && chown renderer /var/run/tirex \
+ && mkdir /var/lib/tirex \
+ && chown renderer /var/lib/tirex \
  && echo "LoadModule tile_module /usr/lib/apache2/modules/mod_tile.so" >> /etc/apache2/conf-available/mod_tile.conf \
  && echo "LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so" >> /etc/apache2/conf-available/mod_headers.conf \
  && a2enconf mod_tile && a2enconf mod_headers
@@ -174,6 +189,11 @@ RUN mkdir -p /home/renderer/src \
  && git checkout 612fe3e040d8bb70d2ab3b133f3b2cfc6c940520 \
  && rm -rf .git \
  && chmod u+x /home/renderer/src/regional/trim_osc.py
+
+RUN rm -rf /etc/tirex/renderer/mapserver* /etc/tirex/renderer/test* /etc/tirex/renderer/wms* /etc/tirex/renderer/tms* /etc/tirex/renderer/openseamap*
+COPY osm*.conf /etc/tirex/renderer/mapnik/
+COPY mapnik.conf /etc/tirex/renderer/mapnik.conf
+COPY tirex.conf /etc/tirex/tirex.conf
 
 # Start running
 COPY run.sh /

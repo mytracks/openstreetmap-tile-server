@@ -15,7 +15,7 @@ function setPostgresPassword() {
 if [ "$#" -ne 1 ]; then
     echo "usage: <import|run>"
     echo "commands:"
-    echo "    import: Set up the database and import /data.osm.pbf"
+    echo "    import: Set up the database and import /data.osm.pbf or /data.osm.bz2"
     echo "    run: Runs Apache and renderd to serve tiles at /tile/{z}/{x}/{y}.png"
     echo "environment variables:"
     echo "    THREADS: defines number of threads used for importing / tile rendering"
@@ -24,6 +24,11 @@ if [ "$#" -ne 1 ]; then
 fi
 
 if [ "$1" = "import" ]; then
+    if [ -f /var/lib/mod_tile/planet-import-complete ]; then
+        echo "Skipping import: data already imported"
+        exit 0
+    fi
+
     # Ensure that database directory is in right state
     chown postgres:postgres -R /var/lib/postgresql
     if [ ! -f /var/lib/postgresql/12/main/PG_VERSION ]; then
@@ -42,7 +47,7 @@ if [ "$1" = "import" ]; then
     setPostgresPassword
 
     # Download Luxembourg as sample if no data is provided
-    if [ ! -f /data.osm.pbf ] && [ -z "$DOWNLOAD_PBF" ]; then
+    if [ ! -f /data.osm.pbf ] && [ -z "$DOWNLOAD_PBF" ] && [ ! -f /data.osm.bz2 ]; then
         echo "WARNING: No import file at /data.osm.pbf, so importing Luxembourg as example..."
         DOWNLOAD_PBF="https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf"
         DOWNLOAD_POLY="https://download.geofabrik.de/europe/luxembourg.poly"
@@ -73,7 +78,13 @@ if [ "$1" = "import" ]; then
     fi
 
     # Import data
-    sudo -u renderer osm2pgsql -d gis --create --slim -G --hstore --tag-transform-script /home/renderer/src/openstreetmap-carto/openstreetmap-carto.lua --number-processes ${THREADS:-4} -S /home/renderer/src/openstreetmap-carto/openstreetmap-carto.style /data.osm.pbf ${OSM2PGSQL_EXTRA_ARGS}
+    if [ -f /data.osm.pbf ]; then
+        sudo -u renderer osm2pgsql -d gis --create --slim -G --hstore --tag-transform-script /home/renderer/src/openstreetmap-carto/openstreetmap-carto.lua --number-processes ${THREADS:-4} -S /home/renderer/src/openstreetmap-carto/openstreetmap-carto.style /data.osm.pbf ${OSM2PGSQL_EXTRA_ARGS}
+    else
+        if [ -f /data.osm.bz2 ]; then
+            sudo -u renderer osm2pgsql -d gis --create --slim -G --hstore --tag-transform-script /home/renderer/src/openstreetmap-carto/openstreetmap-carto.lua --number-processes ${THREADS:-4} -S /home/renderer/src/openstreetmap-carto/openstreetmap-carto.style /data.osm.bz2 ${OSM2PGSQL_EXTRA_ARGS}
+        fi
+    fi
 
     # Create indexes
     sudo -u postgres psql -d gis -f indexes.sql
@@ -105,7 +116,7 @@ if [ "$1" = "run" ]; then
     setPostgresPassword
 
     # Configure renderd threads
-    sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /usr/local/etc/renderd.conf
+    #sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /usr/local/etc/renderd.conf
 
     # start cron job to trigger consecutive updates
     if [ "$UPDATES" = "enabled" ] || [ "$UPDATES" = "1" ]; then
@@ -118,7 +129,10 @@ if [ "$1" = "run" ]; then
     }
     trap stop_handler SIGTERM
 
-    sudo -u renderer renderd -f -c /usr/local/etc/renderd.conf &
+    su -c 'tirex-backend-manager' renderer
+    su -c 'tirex-master -f' renderer &
+    #sleep 999999999
+
     child=$!
     wait "$child"
 
