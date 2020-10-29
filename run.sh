@@ -2,12 +2,6 @@
 
 set -x
 
-function createPostgresConfig() {
-  cp /etc/postgresql/12/main/postgresql.custom.conf.tmpl /etc/postgresql/12/main/conf.d/postgresql.custom.conf
-  sudo -u postgres echo "autovacuum = $AUTOVACUUM" >> /etc/postgresql/12/main/conf.d/postgresql.custom.conf
-  cat /etc/postgresql/12/main/conf.d/postgresql.custom.conf
-}
-
 function setPostgresPassword() {
     sudo -u postgres psql -c "ALTER USER renderer PASSWORD '${PGPASSWORD:-renderer}'"
 }
@@ -36,7 +30,6 @@ if [ "$1" = "import" ]; then
     fi
 
     # Initialize PostgreSQL
-    createPostgresConfig
     service postgresql start
     sudo -u postgres createuser renderer
     sudo -u postgres createdb -E UTF8 -O renderer gis
@@ -110,7 +103,6 @@ if [ "$1" = "run" ]; then
     fi
 
     # Initialize PostgreSQL and Apache
-    createPostgresConfig
     service postgresql start
     service apache2 restart
     setPostgresPassword

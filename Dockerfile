@@ -85,7 +85,7 @@ RUN apt-get install -y --no-install-recommends \
 && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 # Set up PostGIS
-RUN wget https://download.osgeo.org/postgis/source/postgis-3.0.0.tar.gz -O postgis.tar.gz \
+RUN wget https://download.osgeo.org/postgis/source/postgis-3.0.2.tar.gz -O postgis.tar.gz \
  && mkdir -p postgis_src \
  && tar -xvzf postgis.tar.gz --strip 1 -C postgis_src \
  && rm postgis.tar.gz \
@@ -126,14 +126,16 @@ RUN mkdir -p /home/renderer/src \
  && cd ..
 
 # Configure stylesheet
+# git -C openstreetmap-carto checkout v4.25.0
+# npm install -g carto@0.18.2
 RUN mkdir -p /home/renderer/src \
  && cd /home/renderer/src \
  && git clone https://github.com/gravitystorm/openstreetmap-carto.git \
- && git -C openstreetmap-carto checkout v4.23.0 \
+ && git -C openstreetmap-carto checkout v5.2.0 \
  && cd openstreetmap-carto \
  && rm -rf .git \
  && npm install -g carto@0.18.2 \
- && carto project.mml > mapnik.xml \
+ && carto project.mml | sed -e 's#<TextSymbolizer #<TextSymbolizer avoid-edges="true" #g' -e 's#<ShieldSymbolizer #<ShieldSymbolizer avoid-edges="true" #g' > mapnik.xml \
  && scripts/get-shapefiles.py \
  && rm /home/renderer/src/openstreetmap-carto/data/*.zip
 
@@ -142,12 +144,12 @@ RUN mkdir -p /home/renderer/src \
 #  && sed -i 's/\/truetype//g' /usr/local/etc/renderd.conf \
 #  && sed -i 's/hot/tile/g' /usr/local/etc/renderd.conf
 
- # Install Tirex
+ # Install Tirex v0.6.3
  RUN  mkdir -p /home/renderer/src \
  && cd /home/renderer/src \
  && git clone https://github.com/openstreetmap/tirex.git \
  && cd tirex \
- && git checkout ec73c36a5c4d2a6ffe2ae9118d8d9d9dad3a786c \
+ && git checkout 1c52d1397e3e18f678fb45cb1fac5410bc16f836 \
  && rm -rf .git \
  && make install
 
@@ -167,10 +169,10 @@ RUN ln -sf /dev/stdout /var/log/apache2/access.log \
  && ln -sf /dev/stderr /var/log/apache2/error.log
 
 # Configure PosgtreSQL
-COPY postgresql.custom.conf.tmpl /etc/postgresql/12/main/
-RUN chown -R postgres:postgres /var/lib/postgresql \
- && chown postgres:postgres /etc/postgresql/12/main/postgresql.custom.conf.tmpl \
- && echo "host all all 0.0.0.0/0 md5" >> /etc/postgresql/12/main/pg_hba.conf \
+# COPY postgresql.custom.conf.tmpl /etc/postgresql/12/main/
+# RUN chown -R postgres:postgres /var/lib/postgresql \
+#  && chown postgres:postgres /etc/postgresql/12/main/postgresql.custom.conf.tmpl \
+RUN echo "host all all 0.0.0.0/0 md5" >> /etc/postgresql/12/main/pg_hba.conf \
  && echo "host all all ::/0 md5" >> /etc/postgresql/12/main/pg_hba.conf
 
 # Copy update scripts
